@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<title>فارز البلتات</title>
+<meta name="description" content="امسح باركود الكرتونة واعرف رقم البلتة فوراً">
+<meta name="theme-color" content="#12161f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="فارز البلتات">
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="./icons/favicon-16.png" sizes="16x16" type="image/png">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg: #12161f;
+    --panel: #1b2130;
+    --panel-2: #232b3d;
+    --line: #313b52;
+    --text: #eef1f7;
+    --muted: #8b93a8;
+    --amber: #ffb020;
+    --amber-dim: #4a3a17;
+    --teal: #33c6b0;
+    --teal-dim: #133a35;
+    --danger: #ff5c5c;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Rubik', 'Tahoma', sans-serif;
+    min-height: 100vh;
+    padding: 16px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .wrap{ max-width: 480px; margin: 0 auto; }
+
+  header{ text-align:center; margin-bottom:14px; padding-top:4px; }
+  header .tag{
+    display:inline-block; font-size:12px; letter-spacing:.5px;
+    color: var(--amber); background: var(--amber-dim);
+    padding:4px 12px; border-radius:20px; margin-bottom:10px;
+  }
+  header h1{ font-size:22px; font-weight:900; margin:0 0 4px; }
+  header p{ font-size:13px; color:var(--muted); margin:0; line-height:1.6; }
+
+  .container-bar{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background: var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:12px 14px; margin-bottom:16px;
+  }
+  .container-bar .info{ display:flex; flex-direction:column; gap:2px; }
+  .container-bar .info .label{ font-size:11px; color:var(--muted); }
+  .container-bar .info .name{ font-size:15px; font-weight:700; }
+  .container-bar button{
+    background: var(--panel-2); border:1px solid var(--line); color: var(--text);
+    border-radius:10px; padding:9px 12px; font-size:12px; font-weight:700;
+    cursor:pointer; white-space:nowrap; font-family:inherit;
+  }
+
+  .card{
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+
+  #reader{
+    width:100%; border-radius:14px; overflow:hidden;
+    background:#000;
+    min-height: 180px;
+  }
+  #reader video{ border-radius:14px; }
+
+  .btn{
+    width:100%; border:none; border-radius:14px; padding:16px;
+    font-family:inherit; font-size:17px; font-weight:700; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; gap:10px;
+    transition: transform .08s ease, opacity .15s ease;
+  }
+  .btn:active{ transform: scale(0.97); }
+  .btn-primary{ background: var(--amber); color:#1a1300; }
+  .btn-outline{ background: transparent; color: var(--text); border:1px solid var(--line); }
+  .btn-ghost{ background: var(--panel-2); color: var(--muted); font-size:13px; padding:10px; font-weight:500; }
+  .btn[disabled]{ opacity:.4; pointer-events:none; }
+
+  .manual-row{ display:flex; gap:8px; margin-top:12px; }
+  .manual-row input{
+    flex:1; background: var(--panel-2); border:1px solid var(--line);
+    color: var(--text); border-radius:12px; padding:14px; font-size:16px;
+    font-family:inherit; direction:ltr; text-align:center;
+  }
+  .manual-row input:focus{ outline:2px solid var(--amber); }
+  .manual-row button{
+    background: var(--panel-2); border:1px solid var(--line); color: var(--text);
+    border-radius:12px; padding:0 18px; font-size:15px; font-weight:700; cursor:pointer;
+  }
+
+  .result{ text-align:center; padding: 6px 0 2px; }
+  .result .status{
+    display:inline-block; font-size:12px; font-weight:700; padding:4px 12px;
+    border-radius:20px; margin-bottom:10px;
+  }
+  .status.new{ background: var(--teal-dim); color: var(--teal); }
+  .status.known{ background: var(--amber-dim); color: var(--amber); }
+  .status.error{ background: #3a1717; color: var(--danger); }
+
+  .pallet-num{ font-size:64px; font-weight:900; line-height:1; margin: 4px 0; }
+  .pallet-num span{ font-size:20px; font-weight:500; color: var(--muted); display:block; margin-bottom:6px; }
+  .result .barcode{ font-size:13px; color: var(--muted); direction:ltr; margin-top:4px; }
+  .result .carton-count{ font-size:14px; color: var(--teal); font-weight:700; margin-top:10px; }
+
+  .name-row{ display:flex; gap:8px; margin-top:16px; }
+  .name-row input{
+    flex:1; background: var(--panel-2); border:1px solid var(--line);
+    color: var(--text); border-radius:12px; padding:13px; font-size:15px;
+    font-family:inherit; text-align:right;
+  }
+  .name-row input:focus{ outline:2px solid var(--amber); }
+  .name-row button{
+    background: var(--teal-dim); border:1px solid var(--teal); color: var(--teal);
+    border-radius:12px; padding:0 16px; font-size:14px; font-weight:700; cursor:pointer; font-family:inherit;
+  }
+
+  .placeholder{ text-align:center; color: var(--muted); font-size:14px; padding: 20px 10px; line-height:1.7; }
+  .placeholder .big{ font-size:40px; display:block; margin-bottom:8px; }
+
+  h2.section-title{ font-size:14px; color: var(--muted); font-weight:700; margin: 0 0 10px; display:flex; justify-content:space-between; align-items:center; }
+  h2.section-title small{ font-weight:500; color:#5b6478; }
+
+  table{ width:100%; border-collapse: collapse; font-size:13px; }
+  th{ text-align:right; color: var(--muted); font-weight:500; font-size:12px; padding-bottom:8px; }
+  th:last-child{ text-align:center; }
+  td{ padding:10px 4px; border-top:1px solid var(--line); vertical-align:middle; }
+  td.pallet-cell{ font-weight:800; font-size:16px; color: var(--amber); text-align:center; white-space:nowrap; }
+  td.code-cell{ direction:ltr; text-align:right; color: var(--text); font-weight:500; font-size:12px; }
+  td.name-cell{ color: var(--text); font-size:13px; }
+  td.name-cell.empty{ color:#556; font-style:italic; }
+  td.count-cell{ text-align:center; font-weight:700; color: var(--text); font-size:14px; }
+
+  .empty-row{ text-align:center; color: var(--muted); padding: 18px 0; font-size:13px; }
+
+  .footer-actions{ display:flex; gap:10px; margin-top:4px; }
+  .footer-actions .btn{ flex:1; }
+
+  .past-item{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:12px 0; border-top:1px solid var(--line); gap:10px;
+  }
+  .past-item:first-child{ border-top:none; }
+  .past-item .meta{ display:flex; flex-direction:column; gap:2px; }
+  .past-item .meta .n{ font-weight:700; font-size:14px; }
+  .past-item .meta .d{ font-size:11px; color:var(--muted); }
+  .past-item button{
+    background: var(--panel-2); border:1px solid var(--line); color:var(--text);
+    border-radius:10px; padding:8px 12px; font-size:12px; font-weight:700; cursor:pointer; font-family:inherit;
+    white-space:nowrap;
+  }
+
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+    background: var(--panel-2); border:1px solid var(--line); color:var(--text);
+    padding:12px 20px; border-radius:12px; font-size:14px; opacity:0;
+    transition:opacity .25s ease; pointer-events:none; max-width:90%; text-align:center; z-index:50;
+  }
+  .toast.show{ opacity:1; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <span class="tag">أداة المخزن</span>
+    <h1>فارز البلتات</h1>
+    <p>امسح باركود أي كرتونة، والتطبيق يقولك تحطها على بلتة رقم كام — ويفتكر القرار في المرة الجاية.</p>
+  </header>
+
+  <div class="container-bar">
+    <div class="info">
+      <span class="label">الحاوية الحالية</span>
+      <span class="name" id="containerName">—</span>
+    </div>
+    <button id="closeContainerBtn">📦 إنهاء وابدأ حاوية جديدة</button>
+  </div>
+
+  <div class="card">
+    <div id="reader"></div>
+    <div style="margin-top:12px; display:flex; flex-direction:column; gap:10px;">
+      <button class="btn btn-primary" id="scanBtn">📷 ابدأ المسح</button>
+      <button class="btn btn-outline" id="stopBtn" style="display:none;">إيقاف الكاميرا</button>
+    </div>
+    <div class="manual-row">
+      <input type="text" id="manualInput" placeholder="أو اكتب رقم الباركود يدوياً" inputmode="numeric">
+      <button id="manualBtn">تسجيل</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div id="resultBox">
+      <div class="placeholder">
+        <span class="big">📦</span>
+        امسح أول كرتونة عشان يبدأ الترتيب
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="section-title">
+      الأصناف المسجلة في الحاوية دي
+      <small id="itemCount">0 صنف</small>
+    </h2>
+    <table id="historyTable" style="display:none;">
+      <thead>
+        <tr><th>الباركود</th><th>اسم الصنف</th><th>الكراتين</th><th>بلتة</th></tr>
+      </thead>
+      <tbody id="historyBody"></tbody>
+    </table>
+    <div class="empty-row" id="emptyHistory">لسه مفيش أصناف متسجلة</div>
+  </div>
+
+  <div class="footer-actions">
+    <button class="btn btn-outline" id="exportBtn">⬇️ تصدير شيت إكسل للحاوية دي</button>
+  </div>
+  <div class="footer-actions" style="margin-top:10px;">
+    <button class="btn btn-ghost" id="resetBtn">🗑️ مسح بيانات الحاوية الحالية</button>
+  </div>
+
+  <div class="card" id="pastCard" style="display:none;">
+    <h2 class="section-title">حاويات سابقة</h2>
+    <div id="pastList"></div>
+  </div>
+
+  <p style="text-align:center; font-size:11px; color:#4d5568; margin-top:16px; line-height:1.6;">
+    البيانات دي متخزنة على الجهاز ده بس، وبتفضل موجودة حتى من غير نت.<br>
+    لو أكتر من حد بيستخدم التطبيق في نفس الوقت على أجهزة مختلفة، الأرقام مش هتتزامن بينهم أوتوماتيك.
+  </p>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const STORE_KEY = 'pallet_sorter_state_v1';
+let html5QrCode = null;
+let scanning = false;
+let currentCode = null; // barcode currently shown in the result card
+
+const resultBox = document.getElementById('resultBox');
+const historyBody = document.getElementById('historyBody');
+const historyTable = document.getElementById('historyTable');
+const emptyHistory = document.getElementById('emptyHistory');
+const itemCount = document.getElementById('itemCount');
+const scanBtn = document.getElementById('scanBtn');
+const stopBtn = document.getElementById('stopBtn');
+const toast = document.getElementById('toast');
+const containerNameEl = document.getElementById('containerName');
+const pastCard = document.getElementById('pastCard');
+const pastList = document.getElementById('pastList');
+
+function showToast(msg){
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(()=> toast.classList.remove('show'), 2200);
+}
+
+// ---------- State: multiple containers, each with its own items/pallets ----------
+
+function defaultState(){
+  const id = 'c_' + Date.now();
+  return {
+    activeId: id,
+    containers: {
+      [id]: { id, name: 'حاوية 1', createdAt: new Date().toISOString(), closedAt: null, items: {} }
+    }
+  };
+}
+
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORE_KEY);
+    if(!raw) return defaultState();
+    const parsed = JSON.parse(raw);
+    if(!parsed.containers || !parsed.activeId || !parsed.containers[parsed.activeId]) return defaultState();
+    return parsed;
+  }catch(e){
+    return defaultState();
+  }
+}
+
+function saveState(state){
+  try{
+    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    return true;
+  }catch(e){
+    showToast('حصل خطأ في الحفظ، حاول تاني');
+    return false;
+  }
+}
+
+function getActive(state){
+  return state.containers[state.activeId];
+}
+
+function nextPalletNumber(items){
+  const nums = Object.values(items).map(v => v.pallet).filter(n => typeof n === 'number');
+  return nums.length ? Math.max(...nums) + 1 : 1;
+}
+
+function containerCount(state){
+  return Object.keys(state.containers).length;
+}
+
+// ---------- Scan handling ----------
+
+async function handleBarcode(code){
+  code = (code || '').trim();
+  if(!code){ return; }
+
+  const state = loadState();
+  const active = getActive(state);
+  let status, pallet, name;
+
+  if(active.items[code]){
+    status = 'known';
+    pallet = active.items[code].pallet;
+    name = active.items[code].name || '';
+    active.items[code].count = (active.items[code].count || 1) + 1;
+    active.items[code].lastSeen = new Date().toISOString();
+  } else {
+    status = 'new';
+    pallet = nextPalletNumber(active.items);
+    name = '';
+    active.items[code] = { pallet, name: '', count: 1, firstSeen: new Date().toISOString(), lastSeen: new Date().toISOString() };
+  }
+
+  if(!saveState(state)) return;
+
+  currentCode = code;
+  renderResult(code, pallet, status, name, active.items[code].count);
+  renderHistory(active.items);
+}
+
+function renderResult(code, pallet, status, name, count){
+  const statusLabel = status === 'new' ? 'صنف جديد — بلتة جديدة' : 'صنف معروف';
+  const statusClass = status === 'new' ? 'new' : 'known';
+  const countLabel = count === 1
+    ? 'دي أول كرتونة من الصنف ده'
+    : `دي الكرتونة رقم ${count} من الصنف ده على البلتة دي`;
+  resultBox.innerHTML = `
+    <div class="result">
+      <span class="status ${statusClass}">${statusLabel}</span>
+      <div class="pallet-num"><span>حط الكرتونة على بلتة رقم</span>${pallet}</div>
+      <div class="carton-count">📦 ${countLabel}</div>
+      <div class="barcode">${code}</div>
+      <div class="name-row">
+        <input type="text" id="nameInput" placeholder="اكتب اسم/وصف الصنف (اختياري)" value="${escapeHtml(name || '')}">
+        <button id="saveNameBtn">💾 حفظ الاسم</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('saveNameBtn').addEventListener('click', saveCurrentName);
+  document.getElementById('nameInput').addEventListener('keydown', (e) => {
+    if(e.key === 'Enter') saveCurrentName();
+  });
+}
+
+function saveCurrentName(){
+  if(!currentCode) return;
+  const val = document.getElementById('nameInput').value.trim();
+  const state = loadState();
+  const active = getActive(state);
+  if(!active.items[currentCode]) return;
+  active.items[currentCode].name = val;
+  saveState(state);
+  renderHistory(active.items);
+  showToast('اتحفظ اسم الصنف');
+}
+
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, (m) => ({
+    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+  }[m]));
+}
+
+function renderHistory(items){
+  const entries = Object.entries(items).sort((a,b) => a[1].pallet - b[1].pallet);
+  itemCount.textContent = entries.length + ' صنف';
+
+  if(entries.length === 0){
+    historyTable.style.display = 'none';
+    emptyHistory.style.display = 'block';
+    return;
+  }
+  historyTable.style.display = 'table';
+  emptyHistory.style.display = 'none';
+
+  historyBody.innerHTML = entries.map(([code, info]) => `
+    <tr>
+      <td class="code-cell">${code}</td>
+      <td class="name-cell ${info.name ? '' : 'empty'}">${info.name ? escapeHtml(info.name) : 'بدون اسم'}</td>
+      <td class="count-cell">${info.count || 1}</td>
+      <td class="pallet-cell">${info.pallet}</td>
+    </tr>
+  `).join('');
+}
+
+function renderContainerBar(state){
+  const active = getActive(state);
+  containerNameEl.textContent = active.name;
+}
+
+function renderPastContainers(state){
+  const past = Object.values(state.containers)
+    .filter(c => c.id !== state.activeId)
+    .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  if(past.length === 0){
+    pastCard.style.display = 'none';
+    return;
+  }
+  pastCard.style.display = 'block';
+  pastList.innerHTML = past.map(c => {
+    const count = Object.keys(c.items).length;
+    const dateLabel = new Date(c.createdAt).toLocaleDateString('ar-EG');
+    return `
+      <div class="past-item">
+        <div class="meta">
+          <span class="n">${escapeHtml(c.name)}</span>
+          <span class="d">${count} صنف — ${dateLabel}</span>
+        </div>
+        <button data-export="${c.id}">⬇️ تصدير</button>
+      </div>
+    `;
+  }).join('');
+
+  pastList.querySelectorAll('button[data-export]').forEach(btn => {
+    btn.addEventListener('click', () => exportContainer(btn.getAttribute('data-export')));
+  });
+}
+
+function refreshAll(){
+  const state = loadState();
+  const active = getActive(state);
+  renderContainerBar(state);
+  renderHistory(active.items);
+  renderPastContainers(state);
+}
+
+// ---------- Container lifecycle ----------
+
+document.getElementById('closeContainerBtn').addEventListener('click', () => {
+  const state = loadState();
+  const active = getActive(state);
+  const activeCount = Object.keys(active.items).length;
+
+  const msg = activeCount > 0
+    ? `هيتم إنهاء "${active.name}" (${activeCount} صنف) وفتح حاوية جديدة بترقيم بلتات من الأول. متأكد؟`
+    : `تأكيد فتح حاوية جديدة؟`;
+  if(!confirm(msg)) return;
+
+  active.closedAt = new Date().toISOString();
+
+  const suggestedName = 'حاوية ' + (containerCount(state) + 1);
+  const newName = prompt('اسم الحاوية الجديدة (اختياري):', suggestedName) || suggestedName;
+
+  const newId = 'c_' + Date.now();
+  state.containers[newId] = { id: newId, name: newName, createdAt: new Date().toISOString(), closedAt: null, items: {} };
+  state.activeId = newId;
+
+  saveState(state);
+  currentCode = null;
+  resultBox.innerHTML = `<div class="placeholder"><span class="big">📦</span>امسح أول كرتونة في الحاوية الجديدة</div>`;
+  refreshAll();
+  showToast('اتفتحت حاوية جديدة: ' + newName);
+});
+
+// ---------- Camera scanning ----------
+
+function onScanSuccess(decodedText){
+  stopScanning();
+  handleBarcode(decodedText);
+}
+function onScanFailure(){ /* ignore per-frame failures */ }
+
+async function startScanning(){
+  if(scanning) return;
+  try{
+    html5QrCode = new Html5Qrcode("reader");
+    await html5QrCode.start(
+      { facingMode: "environment" },
+      {
+        fps: 10,
+        qrbox: { width: 260, height: 140 },
+        formatsToSupport: window.Html5QrcodeSupportedFormats ? [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.ITF,
+          Html5QrcodeSupportedFormats.QR_CODE
+        ] : undefined
+      },
+      onScanSuccess,
+      onScanFailure
+    );
+    scanning = true;
+    scanBtn.style.display = 'none';
+    stopBtn.style.display = 'block';
+  }catch(err){
+    showToast('مش قادر أفتح الكاميرا — جرب تسمح بالإذن أو استخدم الإدخال اليدوي');
+  }
+}
+
+async function stopScanning(){
+  if(html5QrCode && scanning){
+    try{ await html5QrCode.stop(); }catch(e){}
+    try{ html5QrCode.clear(); }catch(e){}
+  }
+  scanning = false;
+  scanBtn.style.display = 'block';
+  stopBtn.style.display = 'none';
+}
+
+scanBtn.addEventListener('click', startScanning);
+stopBtn.addEventListener('click', stopScanning);
+
+document.getElementById('manualBtn').addEventListener('click', () => {
+  const input = document.getElementById('manualInput');
+  if(input.value.trim()){
+    handleBarcode(input.value);
+    input.value = '';
+  }
+});
+document.getElementById('manualInput').addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){ document.getElementById('manualBtn').click(); }
+});
+
+// ---------- Excel export ----------
+
+function buildWorkbookFromItems(items, containerName){
+  const entries = Object.entries(items).sort((a,b) => a[1].pallet - b[1].pallet);
+  const rows = entries.map(([code, info]) => ({
+    'الباركود': code,
+    'رقم الصنف (Item No.)': '',
+    'اسم/وصف الصنف': info.name || '',
+    'رقم البلتة': info.pallet,
+    'الكمية بالكرتونة': info.count || 1,
+    'ملاحظات': 'تم تسجيله من أداة المسح'
+  }));
+
+  const headerOrder = ['الباركود','رقم الصنف (Item No.)','اسم/وصف الصنف','رقم البلتة','الكمية بالكرتونة','ملاحظات'];
+  const worksheet = XLSX.utils.json_to_sheet(rows, { header: headerOrder });
+  worksheet['!cols'] = [
+    { wch: 18 }, { wch: 20 }, { wch: 32 }, { wch: 12 }, { wch: 16 }, { wch: 34 }
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  workbook.Workbook = { Views: [{ RTL: true }] };
+  XLSX.utils.book_append_sheet(workbook, worksheet, containerName.slice(0, 28) || 'دليل الأصناف');
+  return workbook;
+}
+
+document.getElementById('exportBtn').addEventListener('click', () => {
+  const state = loadState();
+  const active = getActive(state);
+  if(Object.keys(active.items).length === 0){
+    showToast('مفيش بيانات لسه عشان تتصدّر');
+    return;
+  }
+  const workbook = buildWorkbookFromItems(active.items, active.name);
+  const today = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(workbook, `${active.name}_${today}.xlsx`);
+  showToast('تم تحميل الشيت');
+});
+
+function exportContainer(containerId){
+  const state = loadState();
+  const c = state.containers[containerId];
+  if(!c) return;
+  if(Object.keys(c.items).length === 0){
+    showToast('الحاوية دي فاضية');
+    return;
+  }
+  const workbook = buildWorkbookFromItems(c.items, c.name);
+  const today = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(workbook, `${c.name}_${today}.xlsx`);
+  showToast('تم تحميل شيت ' + c.name);
+}
+
+// ---------- Reset current container ----------
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  const state = loadState();
+  const active = getActive(state);
+  if(!confirm(`متأكد إنك عايز تمسح كل الأصناف المسجلة في "${active.name}"؟ الحاوية نفسها هتفضل موجودة لكن فاضية.`)) return;
+  active.items = {};
+  saveState(state);
+  currentCode = null;
+  resultBox.innerHTML = `<div class="placeholder"><span class="big">📦</span>امسح أول كرتونة عشان يبدأ الترتيب</div>`;
+  refreshAll();
+  showToast('اتمسحت بيانات الحاوية');
+});
+
+// ---------- Init ----------
+
+refreshAll();
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>

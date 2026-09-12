@@ -1,0 +1,19 @@
+{
+  "name": "فارز البلتات",
+  "short_name": "فارز البلتات",
+  "description": "امسح باركود الكرتونة واعرف رقم البلتة فوراً",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#12161f",
+  "theme_color": "#12161f",
+  "dir": "rtl",
+  "lang": "ar",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
