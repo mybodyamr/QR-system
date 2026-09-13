@@ -88,6 +88,12 @@
     min-height: 180px;
   }
   #reader video{ border-radius:14px; }
+  .cam-ctrl-btn{
+    background: var(--panel-2); border:1px solid var(--line); color: var(--text);
+    border-radius:10px; padding:10px 14px; font-size:13px; font-weight:700;
+    cursor:pointer; font-family:inherit; white-space:nowrap;
+  }
+  #zoomSlider{ accent-color: var(--amber); }
 
   .btn{
     width:100%; border:none; border-radius:14px; padding:16px;
@@ -232,6 +238,13 @@
 
   <div class="card">
     <div id="reader"></div>
+    <div id="cameraControls" style="display:none; align-items:center; gap:10px; margin-top:10px;">
+      <button id="torchBtn" style="display:none;" class="cam-ctrl-btn">🔦 فلاش</button>
+      <input type="range" id="zoomSlider" style="display:none; flex:1;" min="1" max="5" step="0.1">
+    </div>
+    <p id="scanHint" style="font-size:11px; color:var(--muted); text-align:center; margin:8px 0 0; line-height:1.6;">
+      لو الباركود صغير: قرّبه لحد ما يملى المربع، أو استخدم شريط الزوم لو ظهر تحت.
+    </p>
     <div style="margin-top:12px; display:flex; flex-direction:column; gap:10px;">
       <button class="btn btn-primary" id="scanBtn">📷 ابدأ المسح</button>
       <button class="btn btn-outline" id="stopBtn" style="display:none;">إيقاف الكاميرا</button>
@@ -741,10 +754,14 @@ async function startScanning(){
   try{
     html5QrCode = new Html5Qrcode("reader");
     await html5QrCode.start(
-      { facingMode: "environment" },
+      { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
       {
         fps: 10,
-        qrbox: { width: 260, height: 140 },
+        qrbox: { width: 300, height: 160 },
+        // Use the phone browser's native barcode engine when available (Chrome/Android) —
+        // it's noticeably more accurate on small or slightly-angled labels than the
+        // pure-JS decoder this library falls back to otherwise.
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
         formatsToSupport: window.Html5QrcodeSupportedFormats ? [
           Html5QrcodeSupportedFormats.EAN_13,
           Html5QrcodeSupportedFormats.EAN_8,
@@ -762,8 +779,56 @@ async function startScanning(){
     scanning = true;
     scanBtn.style.display = 'none';
     stopBtn.style.display = 'block';
+    setTimeout(setupCameraControls, 400);
   }catch(err){
     showToast('مش قادر أفتح الكاميرا — جرب تسمح بالإذن أو استخدم الإدخال اليدوي');
+  }
+}
+
+let torchOn = false;
+
+function setupCameraControls(){
+  const cameraControls = document.getElementById('cameraControls');
+  const torchBtn = document.getElementById('torchBtn');
+  const zoomSlider = document.getElementById('zoomSlider');
+  torchBtn.style.display = 'none';
+  zoomSlider.style.display = 'none';
+  torchOn = false;
+
+  if(!html5QrCode || !html5QrCode.getRunningTrackCapabilities) return;
+
+  try{
+    const capabilities = html5QrCode.getRunningTrackCapabilities();
+    let anyControl = false;
+
+    if(capabilities && capabilities.zoom && capabilities.zoom.max > capabilities.zoom.min){
+      anyControl = true;
+      zoomSlider.min = capabilities.zoom.min;
+      zoomSlider.max = capabilities.zoom.max;
+      zoomSlider.step = capabilities.zoom.step || 0.1;
+      zoomSlider.value = capabilities.zoom.min;
+      zoomSlider.style.display = 'block';
+      zoomSlider.oninput = () => {
+        html5QrCode.applyVideoConstraints({ advanced: [{ zoom: parseFloat(zoomSlider.value) }] }).catch(()=>{});
+      };
+    }
+
+    if(capabilities && capabilities.torch){
+      anyControl = true;
+      torchBtn.style.display = 'block';
+      torchBtn.textContent = '🔦 فلاش';
+      torchBtn.onclick = () => {
+        torchOn = !torchOn;
+        html5QrCode.applyVideoConstraints({ advanced: [{ torch: torchOn }] }).catch(()=>{
+          showToast('الفلاش مش مدعوم على الجهاز ده');
+        });
+        torchBtn.textContent = torchOn ? '🔦 قفل الفلاش' : '🔦 فلاش';
+      };
+    }
+
+    cameraControls.style.display = anyControl ? 'flex' : 'none';
+  }catch(e){
+    cameraControls.style.display = 'none';
   }
 }
 
@@ -775,6 +840,7 @@ async function stopScanning(){
   scanning = false;
   scanBtn.style.display = 'block';
   stopBtn.style.display = 'none';
+  document.getElementById('cameraControls').style.display = 'none';
 }
 
 scanBtn.addEventListener('click', startScanning);
