@@ -254,6 +254,7 @@ const STORE_KEY = 'pallet_sorter_state_v1';
 let html5QrCode = null;
 let scanning = false;
 let currentCode = null; // barcode currently shown in the result card
+let lastScan = { code: null, time: 0 };
 
 const resultBox = document.getElementById('resultBox');
 const historyBody = document.getElementById('historyBody');
@@ -320,11 +321,63 @@ function containerCount(state){
   return Object.keys(state.containers).length;
 }
 
+// ---------- Barcode sanity validation ----------
+// Catches the most common real-world mistakes: a misread digit, a half-scanned
+// code, or someone fat-fingering the manual entry field.
+
+function gtinCheckDigitValid(code){
+  const digits = code.split('').map(Number);
+  const check = digits.pop();
+  let sum = 0;
+  let weight = 3;
+  for(let i = digits.length - 1; i >= 0; i--){
+    sum += digits[i] * weight;
+    weight = (weight === 3) ? 1 : 3;
+  }
+  const calc = (10 - (sum % 10)) % 10;
+  return calc === check;
+}
+
+function validateBarcode(code){
+  if(!/^[0-9]+$/.test(code)){
+    // Non-numeric payload (some CODE-128/QR contents) — just check it's a sane length.
+    if(code.length < 4 || code.length > 40){
+      return { ok: false, reason: 'طول الكود غريب (قصير أو طويل جداً) عشان يكون باركود منتج فعلي.' };
+    }
+    return { ok: true };
+  }
+  // Standard product barcode lengths (EAN-8 / UPC-A / EAN-13 / GTIN-14) carry a check digit.
+  if([8, 12, 13, 14].includes(code.length)){
+    if(!gtinCheckDigitValid(code)){
+      return { ok: false, reason: 'رقم التحقق (آخر رقم) في الباركود مش متطابق مع باقي الأرقام — يمكن اتقرا رقم غلط.' };
+    }
+    return { ok: true };
+  }
+  if(code.length < 6 || code.length > 20){
+    return { ok: false, reason: `الطول (${code.length} رقم) مش طول معتاد لباركود منتجات.` };
+  }
+  return { ok: true };
+}
+
 // ---------- Scan handling ----------
 
-async function handleBarcode(code){
+async function handleBarcode(code, forceAccept){
   code = (code || '').trim();
   if(!code){ return; }
+
+  if(!forceAccept){
+    const check = validateBarcode(code);
+    if(!check.ok){
+      const proceed = confirm(
+        `⚠️ الباركود ده يبان غير سليم:\n${check.reason}\n\nالرقم اللي اتقرا: ${code}\n\n` +
+        `لو الرقم صح فعلاً دوس "موافق"، أو دوس "إلغاء" وامسح الكرتونة تاني.`
+      );
+      if(!proceed){
+        showToast('اتلغى — امسح الباركود تاني');
+        return;
+      }
+    }
+  }
 
   const state = loadState();
   const active = getActive(state);
@@ -487,6 +540,11 @@ document.getElementById('closeContainerBtn').addEventListener('click', () => {
 // ---------- Camera scanning ----------
 
 function onScanSuccess(decodedText){
+  const now = Date.now();
+  if(lastScan.code === decodedText && (now - lastScan.time) < 2500){
+    return; // same code fired again within 2.5s — ignore camera jitter/double read
+  }
+  lastScan = { code: decodedText, time: now };
   stopScanning();
   handleBarcode(decodedText);
 }
