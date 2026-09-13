@@ -18,6 +18,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700;900&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.7.1/firebase-app-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.7.1/firebase-firestore-compat.min.js"></script>
 <style>
   :root{
     --bg: #12161f;
@@ -54,18 +56,23 @@
   header p{ font-size:13px; color:var(--muted); margin:0; line-height:1.6; }
 
   .container-bar{
-    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
     background: var(--panel); border:1px solid var(--line); border-radius:14px;
     padding:12px 14px; margin-bottom:16px;
   }
-  .container-bar .info{ display:flex; flex-direction:column; gap:2px; }
-  .container-bar .info .label{ font-size:11px; color:var(--muted); }
-  .container-bar .info .name{ font-size:15px; font-weight:700; }
+  .container-bar .info{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .container-bar .info .label{ font-size:11px; color:var(--muted); display:flex; align-items:center; gap:6px; }
+  .container-bar .info .name{ font-size:15px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .container-bar .actions{ display:flex; align-items:center; gap:6px; flex-shrink:0; }
   .container-bar button{
     background: var(--panel-2); border:1px solid var(--line); color: var(--text);
     border-radius:10px; padding:9px 12px; font-size:12px; font-weight:700;
     cursor:pointer; white-space:nowrap; font-family:inherit;
   }
+  .icon-btn{ padding:9px 10px !important; font-size:15px !important; }
+  .sync-dot{ width:8px; height:8px; border-radius:50%; background:#556; display:inline-block; flex-shrink:0; }
+  .sync-dot.on{ background: var(--teal); box-shadow:0 0 6px var(--teal); }
+  .sync-dot.off{ background: #556; }
 
   .card{
     background: var(--panel);
@@ -117,6 +124,10 @@
 
   .pallet-num{ font-size:64px; font-weight:900; line-height:1; margin: 4px 0; }
   .pallet-num span{ font-size:20px; font-weight:500; color: var(--muted); display:block; margin-bottom:6px; }
+  .edit-pallet-btn{
+    background:none; border:none; color: var(--muted); font-size:12px; text-decoration:underline;
+    cursor:pointer; font-family:inherit; padding:4px; margin-top:-6px;
+  }
   .result .barcode{ font-size:13px; color: var(--muted); direction:ltr; margin-top:4px; }
   .result .carton-count{ font-size:14px; color: var(--teal); font-weight:700; margin-top:10px; }
 
@@ -142,7 +153,7 @@
   th{ text-align:right; color: var(--muted); font-weight:500; font-size:12px; padding-bottom:8px; }
   th:last-child{ text-align:center; }
   td{ padding:10px 4px; border-top:1px solid var(--line); vertical-align:middle; }
-  td.pallet-cell{ font-weight:800; font-size:16px; color: var(--amber); text-align:center; white-space:nowrap; }
+  td.pallet-cell{ font-weight:800; font-size:16px; color: var(--amber); text-align:center; white-space:nowrap; cursor:pointer; }
   td.code-cell{ direction:ltr; text-align:right; color: var(--text); font-weight:500; font-size:12px; }
   td.name-cell{ color: var(--text); font-size:13px; }
   td.name-cell.empty{ color:#556; font-style:italic; }
@@ -174,6 +185,29 @@
     transition:opacity .25s ease; pointer-events:none; max-width:90%; text-align:center; z-index:50;
   }
   .toast.show{ opacity:1; }
+
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:100;
+    display:none; align-items:flex-end; justify-content:center;
+  }
+  .modal-overlay.show{ display:flex; }
+  .modal-sheet{
+    background: var(--panel); border:1px solid var(--line); border-radius:20px 20px 0 0;
+    padding:20px; width:100%; max-width:480px; max-height:85vh; overflow-y:auto;
+  }
+  .modal-sheet h3{ margin:0 0 6px; font-size:17px; }
+  .modal-sheet p{ font-size:12px; color:var(--muted); line-height:1.6; margin:0 0 14px; }
+  .modal-sheet label{ font-size:12px; color:var(--muted); display:block; margin-bottom:6px; }
+  .modal-sheet input, .modal-sheet textarea{
+    width:100%; background: var(--panel-2); border:1px solid var(--line); color:var(--text);
+    border-radius:10px; padding:11px; font-size:13px; font-family:'Rubik',monospace; margin-bottom:14px;
+    direction:ltr; text-align:left;
+  }
+  .modal-sheet textarea{ min-height:110px; resize:vertical; }
+  .modal-status{ font-size:13px; margin-bottom:14px; display:flex; align-items:center; gap:8px; }
+  .modal-actions{ display:flex; gap:8px; }
+  .modal-actions button{ flex:1; }
+  .close-modal{ text-align:center; font-size:13px; color:var(--muted); margin-top:12px; cursor:pointer; }
 </style>
 </head>
 <body>
@@ -187,10 +221,13 @@
 
   <div class="container-bar">
     <div class="info">
-      <span class="label">الحاوية الحالية</span>
+      <span class="label"><span class="sync-dot off" id="syncDot"></span><span id="syncLabel">الحاوية الحالية</span></span>
       <span class="name" id="containerName">—</span>
     </div>
-    <button id="closeContainerBtn">📦 إنهاء وابدأ حاوية جديدة</button>
+    <div class="actions">
+      <button class="icon-btn" id="settingsBtn" title="إعدادات المزامنة">⚙️</button>
+      <button id="closeContainerBtn">📦 حاوية جديدة</button>
+    </div>
   </div>
 
   <div class="card">
@@ -229,6 +266,9 @@
   </div>
 
   <div class="footer-actions">
+    <button class="btn btn-outline" id="undoBtn" disabled>↩️ تراجع عن آخر مسح</button>
+  </div>
+  <div class="footer-actions" style="margin-top:10px;">
     <button class="btn btn-outline" id="exportBtn">⬇️ تصدير شيت إكسل للحاوية دي</button>
   </div>
   <div class="footer-actions" style="margin-top:10px;">
@@ -240,7 +280,7 @@
     <div id="pastList"></div>
   </div>
 
-  <p style="text-align:center; font-size:11px; color:#4d5568; margin-top:16px; line-height:1.6;">
+  <p style="text-align:center; font-size:11px; color:#4d5568; margin-top:16px; line-height:1.6;" id="storageNote">
     البيانات دي متخزنة على الجهاز ده بس، وبتفضل موجودة حتى من غير نت.<br>
     لو أكتر من حد بيستخدم التطبيق في نفس الوقت على أجهزة مختلفة، الأرقام مش هتتزامن بينهم أوتوماتيك.
   </p>
@@ -249,12 +289,48 @@
 
 <div class="toast" id="toast"></div>
 
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal-sheet">
+    <h3>⚙️ مزامنة بين الموبايلات</h3>
+    <p>
+      لو عايز كل الموبايلات تشوف نفس الحاويات والبلتات لحظياً، اعمل مشروع Firebase مجاني
+      وحط بياناته هنا. لو سبت الموضوع فاضي، التطبيق هيفضل شغال عادي على كل جهاز لوحده.
+    </p>
+
+    <div class="modal-status" id="modalStatus">
+      <span class="sync-dot off" id="modalDot"></span>
+      <span id="modalStatusText">مش متصل — البيانات محلية بس</span>
+    </div>
+
+    <label>كود الفريق / المخزن (نفس الكود لازم يتكتب في كل الموبايلات)</label>
+    <input type="text" id="roomInput" placeholder="مثال: mahzan-cairo-1">
+
+    <label>بيانات مشروع Firebase (الصقها زي ما هي من صفحة إعدادات المشروع)</label>
+    <textarea id="configInput" placeholder='{ "apiKey": "...", "authDomain": "...", "projectId": "...", ... }'></textarea>
+
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="saveCloudBtn">💾 حفظ واتصال</button>
+      <button class="btn btn-ghost" id="disconnectCloudBtn">قطع الاتصال</button>
+    </div>
+    <div class="close-modal" id="closeModalBtn">إغلاق</div>
+  </div>
+</div>
+
 <script>
 const STORE_KEY = 'pallet_sorter_state_v1';
+const CLOUD_CONFIG_KEY = 'pallet_sorter_cloud_config';
+const CLOUD_ROOM_KEY = 'pallet_sorter_cloud_room';
+
 let html5QrCode = null;
 let scanning = false;
 let currentCode = null; // barcode currently shown in the result card
 let lastScan = { code: null, time: 0 };
+let undoStack = []; // in-memory snapshots of items{} before the last few scans
+
+let cloudDb = null;
+let cloudUnsub = null;
+let cloudReady = false;
+let applyingRemote = false; // guard to avoid re-pushing a change we just received
 
 const resultBox = document.getElementById('resultBox');
 const historyBody = document.getElementById('historyBody');
@@ -267,11 +343,48 @@ const toast = document.getElementById('toast');
 const containerNameEl = document.getElementById('containerName');
 const pastCard = document.getElementById('pastCard');
 const pastList = document.getElementById('pastList');
+const undoBtn = document.getElementById('undoBtn');
+const syncDot = document.getElementById('syncDot');
+const syncLabel = document.getElementById('syncLabel');
+const storageNote = document.getElementById('storageNote');
 
 function showToast(msg){
   toast.textContent = msg;
   toast.classList.add('show');
   setTimeout(()=> toast.classList.remove('show'), 2200);
+}
+
+// ---------- Sound + vibration feedback ----------
+
+let audioCtx = null;
+function beep(freq, duration, type){
+  try{
+    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
+  }catch(e){ /* audio not available — silently ignore */ }
+}
+
+function feedbackNewItem(){
+  beep(880, 0.12);
+  setTimeout(() => beep(1180, 0.15), 130);
+  if(navigator.vibrate) navigator.vibrate([40, 60, 40]);
+}
+function feedbackKnownItem(){
+  beep(720, 0.12);
+  if(navigator.vibrate) navigator.vibrate(35);
+}
+function feedbackWarning(){
+  beep(220, 0.25, 'square');
+  if(navigator.vibrate) navigator.vibrate([80, 50, 80, 50, 80]);
 }
 
 // ---------- State: multiple containers, each with its own items/pallets ----------
@@ -298,14 +411,17 @@ function loadState(){
   }
 }
 
-function saveState(state){
+function saveState(state, skipCloudPush){
   try{
     localStorage.setItem(STORE_KEY, JSON.stringify(state));
-    return true;
   }catch(e){
     showToast('حصل خطأ في الحفظ، حاول تاني');
     return false;
   }
+  if(cloudReady && cloudDb && !skipCloudPush && !applyingRemote){
+    pushToCloud(state);
+  }
+  return true;
 }
 
 function getActive(state){
@@ -319,6 +435,16 @@ function nextPalletNumber(items){
 
 function containerCount(state){
   return Object.keys(state.containers).length;
+}
+
+function pushUndoSnapshot(items){
+  undoStack.push(JSON.stringify(items));
+  if(undoStack.length > 15) undoStack.shift();
+  updateUndoButton();
+}
+
+function updateUndoButton(){
+  undoBtn.disabled = undoStack.length === 0;
 }
 
 // ---------- Barcode sanity validation ----------
@@ -340,13 +466,11 @@ function gtinCheckDigitValid(code){
 
 function validateBarcode(code){
   if(!/^[0-9]+$/.test(code)){
-    // Non-numeric payload (some CODE-128/QR contents) — just check it's a sane length.
     if(code.length < 4 || code.length > 40){
       return { ok: false, reason: 'طول الكود غريب (قصير أو طويل جداً) عشان يكون باركود منتج فعلي.' };
     }
     return { ok: true };
   }
-  // Standard product barcode lengths (EAN-8 / UPC-A / EAN-13 / GTIN-14) carry a check digit.
   if([8, 12, 13, 14].includes(code.length)){
     if(!gtinCheckDigitValid(code)){
       return { ok: false, reason: 'رقم التحقق (آخر رقم) في الباركود مش متطابق مع باقي الأرقام — يمكن اتقرا رقم غلط.' };
@@ -368,6 +492,7 @@ async function handleBarcode(code, forceAccept){
   if(!forceAccept){
     const check = validateBarcode(code);
     if(!check.ok){
+      feedbackWarning();
       const proceed = confirm(
         `⚠️ الباركود ده يبان غير سليم:\n${check.reason}\n\nالرقم اللي اتقرا: ${code}\n\n` +
         `لو الرقم صح فعلاً دوس "موافق"، أو دوس "إلغاء" وامسح الكرتونة تاني.`
@@ -381,6 +506,9 @@ async function handleBarcode(code, forceAccept){
 
   const state = loadState();
   const active = getActive(state);
+
+  pushUndoSnapshot(active.items);
+
   let status, pallet, name;
 
   if(active.items[code]){
@@ -396,7 +524,13 @@ async function handleBarcode(code, forceAccept){
     active.items[code] = { pallet, name: '', count: 1, firstSeen: new Date().toISOString(), lastSeen: new Date().toISOString() };
   }
 
-  if(!saveState(state)) return;
+  if(!saveState(state)){
+    undoStack.pop();
+    updateUndoButton();
+    return;
+  }
+
+  if(status === 'new') feedbackNewItem(); else feedbackKnownItem();
 
   currentCode = code;
   renderResult(code, pallet, status, name, active.items[code].count);
@@ -413,6 +547,7 @@ function renderResult(code, pallet, status, name, count){
     <div class="result">
       <span class="status ${statusClass}">${statusLabel}</span>
       <div class="pallet-num"><span>حط الكرتونة على بلتة رقم</span>${pallet}</div>
+      <button class="edit-pallet-btn" id="editPalletBtn">✏️ غيّر رقم البلتة يدوياً</button>
       <div class="carton-count">📦 ${countLabel}</div>
       <div class="barcode">${code}</div>
       <div class="name-row">
@@ -425,6 +560,32 @@ function renderResult(code, pallet, status, name, count){
   document.getElementById('nameInput').addEventListener('keydown', (e) => {
     if(e.key === 'Enter') saveCurrentName();
   });
+  document.getElementById('editPalletBtn').addEventListener('click', () => editPallet(code));
+}
+
+function editPallet(code){
+  const state = loadState();
+  const active = getActive(state);
+  const item = active.items[code];
+  if(!item) return;
+
+  const input = prompt('اكتب رقم البلتة اللي عايز تحط الصنف ده عليها:', item.pallet);
+  if(input === null) return;
+  const newPallet = parseInt(input, 10);
+  if(!Number.isInteger(newPallet) || newPallet <= 0){
+    showToast('رقم غير صالح — اكتب رقم صحيح أكبر من صفر');
+    return;
+  }
+
+  pushUndoSnapshot(active.items);
+  item.pallet = newPallet;
+  saveState(state);
+
+  if(currentCode === code){
+    renderResult(code, newPallet, item.count > 1 ? 'known' : 'new', item.name, item.count);
+  }
+  renderHistory(active.items);
+  showToast(`اتحط الصنف على بلتة رقم ${newPallet}`);
 }
 
 function saveCurrentName(){
@@ -462,9 +623,13 @@ function renderHistory(items){
       <td class="code-cell">${code}</td>
       <td class="name-cell ${info.name ? '' : 'empty'}">${info.name ? escapeHtml(info.name) : 'بدون اسم'}</td>
       <td class="count-cell">${info.count || 1}</td>
-      <td class="pallet-cell">${info.pallet}</td>
+      <td class="pallet-cell" data-edit-code="${code}">${info.pallet}</td>
     </tr>
   `).join('');
+
+  historyBody.querySelectorAll('td[data-edit-code]').forEach(td => {
+    td.addEventListener('click', () => editPallet(td.getAttribute('data-edit-code')));
+  });
 }
 
 function renderContainerBar(state){
@@ -532,9 +697,30 @@ document.getElementById('closeContainerBtn').addEventListener('click', () => {
 
   saveState(state);
   currentCode = null;
+  undoStack = [];
+  updateUndoButton();
   resultBox.innerHTML = `<div class="placeholder"><span class="big">📦</span>امسح أول كرتونة في الحاوية الجديدة</div>`;
   refreshAll();
   showToast('اتفتحت حاوية جديدة: ' + newName);
+});
+
+// ---------- Undo ----------
+
+undoBtn.addEventListener('click', () => {
+  if(undoStack.length === 0){
+    showToast('مفيش حاجة تتراجع عنها');
+    return;
+  }
+  const prevItemsJson = undoStack.pop();
+  updateUndoButton();
+  const state = loadState();
+  const active = getActive(state);
+  active.items = JSON.parse(prevItemsJson);
+  saveState(state);
+  currentCode = null;
+  resultBox.innerHTML = `<div class="placeholder"><span class="big">📦</span>امسح الكرتونة الجاية</div>`;
+  refreshAll();
+  showToast('تم التراجع عن آخر عملية');
 });
 
 // ---------- Camera scanning ----------
@@ -666,14 +852,171 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   active.items = {};
   saveState(state);
   currentCode = null;
+  undoStack = [];
+  updateUndoButton();
   resultBox.innerHTML = `<div class="placeholder"><span class="big">📦</span>امسح أول كرتونة عشان يبدأ الترتيب</div>`;
   refreshAll();
   showToast('اتمسحت بيانات الحاوية');
 });
 
+// ---------- Cloud sync (optional Firebase Firestore) ----------
+
+const settingsModal = document.getElementById('settingsModal');
+const roomInput = document.getElementById('roomInput');
+const configInput = document.getElementById('configInput');
+const modalDot = document.getElementById('modalDot');
+const modalStatusText = document.getElementById('modalStatusText');
+
+function openSettings(){
+  const savedRoom = localStorage.getItem(CLOUD_ROOM_KEY) || '';
+  const savedConfig = localStorage.getItem(CLOUD_CONFIG_KEY) || '';
+  roomInput.value = savedRoom;
+  configInput.value = savedConfig;
+  updateModalStatus();
+  settingsModal.classList.add('show');
+}
+function closeSettings(){ settingsModal.classList.remove('show'); }
+
+document.getElementById('settingsBtn').addEventListener('click', openSettings);
+document.getElementById('closeModalBtn').addEventListener('click', closeSettings);
+settingsModal.addEventListener('click', (e) => { if(e.target === settingsModal) closeSettings(); });
+
+function updateModalStatus(){
+  if(cloudReady){
+    modalDot.className = 'sync-dot on';
+    modalStatusText.textContent = 'متصل ✅ — البيانات بتتزامن مع باقي الفريق';
+  } else {
+    modalDot.className = 'sync-dot off';
+    modalStatusText.textContent = 'مش متصل — البيانات محلية بس';
+  }
+}
+
+function updateHeaderSyncStatus(){
+  if(cloudReady){
+    syncDot.className = 'sync-dot on';
+    syncLabel.textContent = 'الحاوية الحالية · متزامن';
+    storageNote.innerHTML = 'البيانات دي متزامنة لحظياً مع كل الموبايلات اللي عندها نفس كود الفريق.';
+  } else {
+    syncDot.className = 'sync-dot off';
+    syncLabel.textContent = 'الحاوية الحالية';
+    storageNote.innerHTML = 'البيانات دي متخزنة على الجهاز ده بس، وبتفضل موجودة حتى من غير نت.<br>لو أكتر من حد بيستخدم التطبيق في نفس الوقت على أجهزة مختلفة، الأرقام مش هتتزامن بينهم أوتوماتيك.';
+  }
+}
+
+function parseFirebaseConfigInput(text){
+  const cleaned = text
+    .replace(/^\s*(const|var|let)\s+\w+\s*=\s*/, '')
+    .replace(/;\s*$/, '')
+    .trim();
+  // eslint-disable-next-line no-new-func
+  return (new Function('return (' + cleaned + ')'))();
+}
+
+function pushToCloud(state){
+  if(!cloudDb) return;
+  const room = localStorage.getItem(CLOUD_ROOM_KEY);
+  if(!room) return;
+  cloudDb.collection('warehouses').doc(room).set({
+    state: state,
+    updatedAt: Date.now()
+  }).catch(() => {
+    showToast('تعذرت المزامنة السحابية — اتحفظ محلياً بس');
+  });
+}
+
+function subscribeCloud(room){
+  if(cloudUnsub) cloudUnsub();
+  cloudUnsub = cloudDb.collection('warehouses').doc(room).onSnapshot((doc) => {
+    if(doc.exists){
+      const data = doc.data();
+      if(data && data.state){
+        applyingRemote = true;
+        localStorage.setItem(STORE_KEY, JSON.stringify(data.state));
+        refreshAll();
+        // Keep the open result card in sync if the active item changed remotely
+        applyingRemote = false;
+      }
+    }
+  }, () => {
+    showToast('انقطع الاتصال بالمزامنة — هيشتغل محلياً لحد ما يرجع النت');
+  });
+}
+
+function initCloudFromStorage(){
+  const savedConfig = localStorage.getItem(CLOUD_CONFIG_KEY);
+  const savedRoom = localStorage.getItem(CLOUD_ROOM_KEY);
+  if(!savedConfig || !savedRoom) return;
+  if(typeof firebase === 'undefined'){
+    showToast('مكتبة المزامنة متحملتش — تأكد من الاتصال بالإنترنت');
+    return;
+  }
+  try{
+    const config = JSON.parse(savedConfig);
+    if(!firebase.apps.length) firebase.initializeApp(config);
+    cloudDb = firebase.firestore();
+    cloudReady = true;
+    subscribeCloud(savedRoom);
+    updateHeaderSyncStatus();
+    updateModalStatus();
+  }catch(e){
+    cloudReady = false;
+    updateHeaderSyncStatus();
+  }
+}
+
+document.getElementById('saveCloudBtn').addEventListener('click', () => {
+  const room = roomInput.value.trim();
+  const rawConfig = configInput.value.trim();
+  if(!room || !rawConfig){
+    showToast('لازم تملأ كود الفريق وبيانات المشروع');
+    return;
+  }
+  let config;
+  try{
+    config = parseFirebaseConfigInput(rawConfig);
+    if(!config.apiKey || !config.projectId) throw new Error('missing fields');
+  }catch(e){
+    showToast('بيانات Firebase مش مقروءة — تأكد إنك لصقت الكود كامل زي ما هو');
+    return;
+  }
+
+  try{
+    if(typeof firebase === 'undefined') throw new Error('firebase not loaded');
+    if(!firebase.apps.length) firebase.initializeApp(config);
+    cloudDb = firebase.firestore();
+    localStorage.setItem(CLOUD_CONFIG_KEY, JSON.stringify(config));
+    localStorage.setItem(CLOUD_ROOM_KEY, room);
+    cloudReady = true;
+    subscribeCloud(room);
+    pushToCloud(loadState()); // seed the room with whatever is on this device right now
+    updateModalStatus();
+    updateHeaderSyncStatus();
+    showToast('اتوصل بنجاح ✅');
+  }catch(e){
+    showToast('فشل الاتصال — راجع بيانات المشروع وكود الفريق');
+  }
+});
+
+document.getElementById('disconnectCloudBtn').addEventListener('click', () => {
+  if(cloudUnsub) cloudUnsub();
+  cloudUnsub = null;
+  cloudDb = null;
+  cloudReady = false;
+  localStorage.removeItem(CLOUD_CONFIG_KEY);
+  localStorage.removeItem(CLOUD_ROOM_KEY);
+  roomInput.value = '';
+  configInput.value = '';
+  updateModalStatus();
+  updateHeaderSyncStatus();
+  showToast('اتقطع الاتصال — البيانات هتفضل محلية بس دلوقتي');
+});
+
 // ---------- Init ----------
 
 refreshAll();
+updateUndoButton();
+updateHeaderSyncStatus();
+initCloudFromStorage();
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => {
